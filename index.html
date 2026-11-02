@@ -362,6 +362,33 @@ function renderAdminPublications(){const box=document.getElementById('adminPubli
 function bindAdminPublications(){const box=document.getElementById('adminPublicationsList');if(box)box.innerHTML='';AZNY_DB.ref('publications').on('value',snap=>{adminPublications=[];snap.forEach(child=>{const v=child.val();if(v)adminPublications.push({...v,id:v.id||child.key,_key:child.key})});if(adminUnlocked)renderAdminPublications()},error=>{console.error('Falha ao carregar publicações na administração:',error);if(box)box.innerHTML='<div class="module-empty">Não foi possível consultar as publicações. Verifique a ligação e as permissões do Firebase.</div>'})}
 async function editPublication(id){const p=adminPublications.find(x=>x.id===id);if(!p)return;editingPublicationId=id;document.getElementById('publicationFormTitle').textContent='Editar publicação';document.getElementById('publicationSubmit').textContent='Guardar alterações';document.getElementById('publicationCancelEdit').style.display='inline-flex';document.getElementById('publicationType').value=p.type;document.getElementById('publicationType').disabled=true;document.getElementById('publicationCaption').value=p.caption||'';document.getElementById('publicationMedia').value='';const box=document.getElementById('publicationPreview');box.innerHTML=p.type==='image'?'<img src="'+publicationEscape(p.url)+'" alt="Publicação atual">':p.type==='video'?'<video controls playsinline src="'+publicationEscape(p.url)+'"></video>':'<audio controls src="'+publicationEscape(p.url)+'"></audio>';document.getElementById('publicationProgress').textContent='Pode alterar a legenda ou selecionar um novo ficheiro do mesmo tipo.';document.getElementById('publicationMedia').accept=p.type==='image'?'image/*':p.type==='video'?'video/*':'audio/*';document.querySelector('.admin-content').scrollTo({top:0,behavior:'smooth'})}
 async function deletePublication(id){const p=adminPublications.find(x=>x.id===id);if(!p||!confirm('Eliminar definitivamente esta publicação?'))return;try{await AZNY_DB.ref('publications/'+p._key).remove();if(p.storagePath)await firebase.storage().ref(p.storagePath).delete().catch(e=>console.warn('Ficheiro antigo não eliminado:',e));toast('Publicação eliminada.')}catch(e){console.error(e);toast('Não foi possível eliminar: '+(e.message||'erro Firebase'))}}
+async function publicationImageDataUrl(file){
+ return new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onerror=()=>reject(new Error('Não foi possível ler a imagem selecionada.'));
+  reader.onload=()=>{
+   const img=new Image();
+   img.onerror=()=>reject(new Error('O formato da imagem não pôde ser processado.'));
+   img.onload=()=>{
+    try{
+     const max=1600,scale=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+     const canvas=document.createElement('canvas');
+     canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
+     canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+     const ctx=canvas.getContext('2d');
+     if(!ctx)throw new Error('Não foi possível preparar a imagem.');
+     ctx.drawImage(img,0,0,canvas.width,canvas.height);
+     let data=canvas.toDataURL('image/jpeg',0.78);
+     if(data.length>4*1024*1024)data=canvas.toDataURL('image/jpeg',0.62);
+     if(data.length>8*1024*1024)throw new Error('A imagem continua demasiado grande após a compressão. Escolha uma imagem mais pequena.');
+     resolve(data);
+    }catch(e){reject(e)}
+   };
+   img.src=String(reader.result);
+  };
+  reader.readAsDataURL(file);
+ });
+}
 async function submitPublication(){
  const btn=document.getElementById('publicationSubmit'),status=document.getElementById('publicationProgress'),caption=document.getElementById('publicationCaption').value.trim(),file=document.getElementById('publicationMedia').files[0],type=document.getElementById('publicationType').value;
  if(caption.length>5000){status.textContent='A legenda não pode ultrapassar 5 000 caracteres.';return}
@@ -369,44 +396,43 @@ async function submitPublication(){
  if(file){const valid=type==='image'?file.type.startsWith('image/'):type==='video'?file.type.startsWith('video/'):file.type.startsWith('audio/');if(!valid){status.textContent='O ficheiro não corresponde ao tipo selecionado.';return}if(file.size>(type==='image'?15:100)*1024*1024){status.textContent='O ficheiro excede o limite permitido ('+(type==='image'?'15 MB':'100 MB')+').';return}}
  const user=firebase.auth().currentUser;
  if(!user||user.isAnonymous||String(user.email||'').toLowerCase()!==ADMIN_EMAIL.toLowerCase()){status.textContent='A sessão administrativa do Firebase não está ativa. Termine a sessão e entre novamente.';return}
- btn.disabled=true;const started=Date.now();btn.textContent='A processar...';status.textContent='A preparar a publicação...';let old=editingPublicationId?adminPublications.find(x=>x.id===editingPublicationId):null,uploadTask=null;
+ btn.disabled=true;btn.textContent='A publicar...';status.textContent='A preparar a publicação...';
+ const old=editingPublicationId?adminPublications.find(x=>x.id===editingPublicationId):null;
  try{
-  let url=old&&old.url||'',storagePath=old&&old.storagePath||'';
   const id=editingPublicationId||('PUB-'+Date.now()+'-'+Math.random().toString(36).slice(2,8));
-  const minimumProcessing=new Promise(resolve=>setTimeout(resolve,3000));
-  let uploadPromise=Promise.resolve();
-  if(file){
+  let url=old&&old.url||'',storagePath=old&&old.storagePath||'';
+  if(file&&type==='image'){
+   status.textContent='A preparar a imagem...';
+   url=await publicationImageDataUrl(file);
+   storagePath='';
+  }else if(file){
+   status.textContent='A enviar ficheiro...';
    const ext=(file.name.split('.').pop()||'bin').replace(/[^a-z0-9]/gi,'').toLowerCase();
    storagePath='publications/'+id+'/'+Date.now()+'.'+ext;
    const ref=firebase.storage().ref().child(storagePath);
-   uploadTask=ref.put(file,{contentType:file.type,cacheControl:'public,max-age=3600'});
-   uploadPromise=new Promise((resolve,reject)=>{
-    let settled=false;
-    const timeout=setTimeout(()=>{if(settled)return;settled=true;try{uploadTask.cancel()}catch(_){}reject(new Error('O envio do ficheiro excedeu 60 segundos. Verifique a ligação à Internet e as permissões do Firebase Storage.'))},60000);
-    uploadTask.on(firebase.storage.TaskEvent.STATE_CHANGED,snap=>{
-      const pct=snap.totalBytes?Math.round(snap.bytesTransferred/snap.totalBytes*100):0;
-      status.textContent='A enviar ficheiro: '+pct+'%';
-    },err=>{if(settled)return;settled=true;clearTimeout(timeout);reject(err)},async()=>{
-      if(settled)return;settled=true;clearTimeout(timeout);
-      try{url=await uploadTask.snapshot.ref.getDownloadURL();resolve()}catch(err){reject(err)}
-    });
+   const task=ref.put(file,{contentType:file.type,cacheControl:'public,max-age=3600'});
+   await new Promise((resolve,reject)=>{
+    let done=false;
+    const timeout=setTimeout(()=>{if(done)return;done=true;try{task.cancel()}catch(_){}reject(new Error('O envio excedeu 60 segundos.'))},60000);
+    task.on(firebase.storage.TaskEvent.STATE_CHANGED,null,err=>{if(done)return;done=true;clearTimeout(timeout);reject(err)},async()=>{if(done)return;done=true;clearTimeout(timeout);try{url=await task.snapshot.ref.getDownloadURL();resolve()}catch(e){reject(e)}});
    });
   }
-  await Promise.all([minimumProcessing,uploadPromise]);
-  status.textContent='A guardar publicação...';
+  await new Promise(resolve=>setTimeout(resolve,3000));
+  status.textContent='A publicar...';
   const data={id,type,caption,url,storagePath,fileName:file?file.name:(old&&old.fileName||''),mimeType:file?file.type:(old&&old.mimeType||''),createdAt:old?old.createdAt:Date.now(),updatedAt:Date.now(),publishedBy:ADMIN_EMAIL};
   const key=old?old._key:id;
   await AZNY_DB.ref('publications/'+key).set(data);
-  const saved={...data,_key:key};const idx=adminPublications.findIndex(x=>x._key===key);if(idx>=0)adminPublications[idx]=saved;else adminPublications.unshift(saved);
+  const saved={...data,_key:key},idx=adminPublications.findIndex(x=>x._key===key);
+  if(idx>=0)adminPublications[idx]=saved;else adminPublications.unshift(saved);
   renderAdminPublications();
-  if(old&&file&&old.storagePath&&old.storagePath!==storagePath)await firebase.storage().ref(old.storagePath).delete().catch(e=>console.warn('Ficheiro anterior não eliminado:',e));
-  status.textContent='Publicação '+(old?'atualizada':'publicada')+' com sucesso. Já está visível na página de publicações.';
+  if(old&&old.storagePath&&old.storagePath!==storagePath)await firebase.storage().ref(old.storagePath).delete().catch(e=>console.warn('Ficheiro anterior não eliminado:',e));
   toast(old?'Publicação atualizada.':'Publicação publicada.');
+  status.textContent='Publicado com sucesso. Já está disponível na página de publicações.';
   resetPublicationForm();
  }catch(e){
   console.error('Erro ao publicar:',e);
   const code=e&&e.code?(' ['+e.code+']'):'';
-  status.textContent='Falha ao publicar'+code+': '+(e&&e.message?e.message:'erro desconhecido')+'. A publicação não foi gravada.';
+  status.textContent='Não foi possível publicar'+code+': '+(e&&e.message?e.message:'erro desconhecido');
  }finally{
   btn.disabled=false;btn.textContent=editingPublicationId?'Guardar alterações':'Publicar';
  }
