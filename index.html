@@ -340,7 +340,7 @@ function openAdminView(name){
  try{sessionStorage.setItem("azny_admin_view",valid)}catch(_){}
  const area=document.querySelector(".admin-content");if(area)area.scrollTop=0;
  closeAdminMenu();
- try{adminLog("Abriu o módulo: "+valid);renderAdminModules()}catch(error){console.error("Erro ao atualizar o conteúdo do módulo "+valid,error)}
+ try{adminLog("Abriu o módulo: "+valid);renderAdminModules();if(valid==="publications")renderAdminPublications()}catch(error){console.error("Erro ao atualizar o conteúdo do módulo "+valid,error)}
 }
 function closeAdminMenu(){const sidebar=document.getElementById("adminSidebar"),shade=document.getElementById("adminSidebarShade");if(sidebar)sidebar.classList.remove("open");if(shade)shade.classList.remove("show")}
 document.querySelectorAll("[data-admin-view]").forEach(b=>{b.type="button";b.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();openAdminView(b.dataset.adminView)})});
