@@ -367,8 +367,9 @@ async function submitPublication(){
  if(caption.length>5000){status.textContent='A legenda não pode ultrapassar 5 000 caracteres.';return}
  if(!editingPublicationId&&!file){status.textContent='Selecione uma imagem, um vídeo ou um áudio.';return}
  if(file){const valid=type==='image'?file.type.startsWith('image/'):type==='video'?file.type.startsWith('video/'):file.type.startsWith('audio/');if(!valid){status.textContent='O ficheiro não corresponde ao tipo selecionado.';return}if(file.size>(type==='image'?15:100)*1024*1024){status.textContent='O ficheiro excede o limite permitido ('+(type==='image'?'15 MB':'100 MB')+').';return}}
- if(!firebase.auth().currentUser){status.textContent='A autenticação Firebase ainda não está pronta. Aguarde e tente novamente.';return}
- btn.disabled=true;const started=Date.now();btn.textContent='A processar...';status.textContent='A preparar a publicação...';let old=editingPublicationId?adminPublications.find(x=>x.id===editingPublicationId):null;
+ const user=firebase.auth().currentUser;
+ if(!user||user.isAnonymous||String(user.email||'').toLowerCase()!==ADMIN_EMAIL.toLowerCase()){status.textContent='A sessão administrativa do Firebase não está ativa. Termine a sessão e entre novamente.';return}
+ btn.disabled=true;const started=Date.now();btn.textContent='A processar...';status.textContent='A preparar a publicação...';let old=editingPublicationId?adminPublications.find(x=>x.id===editingPublicationId):null,uploadTask=null;
  try{
   let url=old&&old.url||'',storagePath=old&&old.storagePath||'';
   const id=editingPublicationId||('PUB-'+Date.now()+'-'+Math.random().toString(36).slice(2,8));
@@ -377,11 +378,22 @@ async function submitPublication(){
   if(file){
    const ext=(file.name.split('.').pop()||'bin').replace(/[^a-z0-9]/gi,'').toLowerCase();
    storagePath='publications/'+id+'/'+Date.now()+'.'+ext;
-   const ref=firebase.storage().ref(storagePath);
-   uploadPromise=(async()=>{const task=ref.put(file,{contentType:file.type,cacheControl:'public,max-age=3600'});await task;url=await ref.getDownloadURL()})();
+   const ref=firebase.storage().ref().child(storagePath);
+   uploadTask=ref.put(file,{contentType:file.type,cacheControl:'public,max-age=3600'});
+   uploadPromise=new Promise((resolve,reject)=>{
+    let settled=false;
+    const timeout=setTimeout(()=>{if(settled)return;settled=true;try{uploadTask.cancel()}catch(_){}reject(new Error('O envio do ficheiro excedeu 60 segundos. Verifique a ligação à Internet e as permissões do Firebase Storage.'))},60000);
+    uploadTask.on(firebase.storage.TaskEvent.STATE_CHANGED,snap=>{
+      const pct=snap.totalBytes?Math.round(snap.bytesTransferred/snap.totalBytes*100):0;
+      status.textContent='A enviar ficheiro: '+pct+'%';
+    },err=>{if(settled)return;settled=true;clearTimeout(timeout);reject(err)},async()=>{
+      if(settled)return;settled=true;clearTimeout(timeout);
+      try{url=await uploadTask.snapshot.ref.getDownloadURL();resolve()}catch(err){reject(err)}
+    });
+   });
   }
   await Promise.all([minimumProcessing,uploadPromise]);
-  status.textContent='A publicar...';
+  status.textContent='A guardar publicação...';
   const data={id,type,caption,url,storagePath,fileName:file?file.name:(old&&old.fileName||''),mimeType:file?file.type:(old&&old.mimeType||''),createdAt:old?old.createdAt:Date.now(),updatedAt:Date.now(),publishedBy:ADMIN_EMAIL};
   const key=old?old._key:id;
   await AZNY_DB.ref('publications/'+key).set(data);
@@ -393,7 +405,8 @@ async function submitPublication(){
   resetPublicationForm();
  }catch(e){
   console.error('Erro ao publicar:',e);
-  status.textContent='Não foi possível publicar. Verifique as regras do Firebase Storage e Realtime Database: '+(e.message||'erro desconhecido');
+  const code=e&&e.code?(' ['+e.code+']'):'';
+  status.textContent='Falha ao publicar'+code+': '+(e&&e.message?e.message:'erro desconhecido')+'. A publicação não foi gravada.';
  }finally{
   btn.disabled=false;btn.textContent=editingPublicationId?'Guardar alterações':'Publicar';
  }
