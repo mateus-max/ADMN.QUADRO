@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'suporte@domingas.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    match /publications/{allPaths=**} {
+      // As publicações são públicas para reprodução no portal.
+      allow read: if true;
+
+      // Só a conta administrativa pode enviar, substituir ou eliminar ficheiros.
+      allow write: if isAdmin()
+        && (
+          request.resource == null
+          || (
+            request.resource.size <= 104857600
+            && request.resource.contentType.matches('(video|image|audio)/.*')
+          )
+        );
+    }
+  }
+}
