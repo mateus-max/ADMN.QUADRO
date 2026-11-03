@@ -423,12 +423,21 @@ async function submitPublication(){
    const task=ref.put(file,{contentType:file.type,cacheControl:'public,max-age=3600'});
    await new Promise((resolve,reject)=>{
     let done=false;
-    const timeout=setTimeout(()=>{if(done)return;done=true;try{task.cancel()}catch(_){}reject(new Error('O envio excedeu 60 segundos.'))},60000);
-    task.on(firebase.storage.TaskEvent.STATE_CHANGED,null,err=>{if(done)return;done=true;clearTimeout(timeout);reject(err)},async()=>{if(done)return;done=true;clearTimeout(timeout);try{url=await task.snapshot.ref.getDownloadURL();resolve()}catch(e){reject(e)}});
+    task.on(firebase.storage.TaskEvent.STATE_CHANGED,snapshot=>{
+     if(done)return;
+     const total=snapshot.totalBytes||file.size||0;
+     const sent=snapshot.bytesTransferred||0;
+     const percent=total?Math.min(100,Math.round(sent/total*100)):0;
+     status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… '+percent+'% ('+(sent/1024/1024).toFixed(1)+' / '+(total/1024/1024).toFixed(1)+' MB)';
+    },err=>{
+     if(done)return;done=true;reject(err);
+    },async()=>{
+     if(done)return;done=true;
+     try{url=await task.snapshot.ref.getDownloadURL();resolve()}catch(e){reject(e)}
+    });
    });
   }
-  await new Promise(resolve=>setTimeout(resolve,3000));
-  status.textContent='A publicar...';
+  status.textContent='A guardar a publicação…';
   const data={id,type,caption,url,storagePath,fileName:file?file.name:(old&&old.fileName||''),mimeType:file?file.type:(old&&old.mimeType||''),createdAt:old?old.createdAt:Date.now(),updatedAt:Date.now(),publishedBy:ADMIN_EMAIL};
   const key=old?old._key:id;
   await AZNY_DB.ref('publications/'+key).set(data);
