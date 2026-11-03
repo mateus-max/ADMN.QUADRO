@@ -399,6 +399,73 @@ async function publicationImageDataUrl(file){
   reader.readAsDataURL(file);
  });
 }
+async function uploadPublicationWithProgress(file,storagePath,user,status,type){
+ const token=await user.getIdToken(true);
+ const buckets=['quadro-azny.firebasestorage.app','quadro-azny.appspot.com'];
+ let lastError=null;
+ for(const bucket of buckets){
+  try{
+   status.textContent='A iniciar a ligação segura ao armazenamento…';
+   const startUrl='https://firebasestorage.googleapis.com/v0/b/'+encodeURIComponent(bucket)+'/o?uploadType=resumable&name='+encodeURIComponent(storagePath);
+   const sessionUrl=await new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('POST',startUrl,true);
+    xhr.setRequestHeader('Authorization','Bearer '+token);
+    xhr.setRequestHeader('Content-Type','application/json; charset=UTF-8');
+    xhr.setRequestHeader('X-Goog-Upload-Protocol','resumable');
+    xhr.setRequestHeader('X-Goog-Upload-Command','start');
+    xhr.setRequestHeader('X-Goog-Upload-Header-Content-Length',String(file.size));
+    xhr.setRequestHeader('X-Goog-Upload-Header-Content-Type',file.type||'application/octet-stream');
+    xhr.onload=()=>{
+     if(xhr.status>=200&&xhr.status<300){
+      const location=xhr.getResponseHeader('X-Goog-Upload-URL')||xhr.getResponseHeader('x-goog-upload-url')||xhr.getResponseHeader('Location');
+      if(location)resolve(location);
+      else reject(new Error('O Firebase aceitou a ligação, mas não devolveu o endereço da transferência.'));
+     }else{
+      let detail=xhr.responseText||('HTTP '+xhr.status);
+      try{const j=JSON.parse(detail);detail=j.error&&j.error.message||detail}catch(_){}
+      reject(new Error('Firebase Storage ('+xhr.status+'): '+detail));
+     }
+    };
+    xhr.onerror=()=>reject(new Error('Falha de rede ao iniciar a transferência para o Firebase Storage.'));
+    xhr.onabort=()=>reject(new Error('A ligação para iniciar a transferência foi interrompida.'));
+    xhr.send('{}');
+   });
+   status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… 0% (0.0 / '+(file.size/1024/1024).toFixed(1)+' MB)';
+   await new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('PUT',sessionUrl,true);
+    xhr.setRequestHeader('Authorization','Bearer '+token);
+    xhr.setRequestHeader('X-Goog-Upload-Command','upload, finalize');
+    xhr.setRequestHeader('X-Goog-Upload-Offset','0');
+    xhr.upload.onprogress=event=>{
+     const sent=event.loaded||0,total=event.lengthComputable?event.total:file.size;
+     const percent=total?Math.min(100,Math.round(sent/total*100)):0;
+     status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… '+percent+'% ('+(sent/1024/1024).toFixed(1)+' / '+(file.size/1024/1024).toFixed(1)+' MB)';
+    };
+    xhr.onload=()=>{
+     if(xhr.status>=200&&xhr.status<300)resolve();
+     else{
+      let detail=xhr.responseText||('HTTP '+xhr.status);
+      try{const j=JSON.parse(detail);detail=j.error&&j.error.message||detail}catch(_){}
+      reject(new Error('Falha ao guardar o ficheiro no Firebase Storage ('+xhr.status+'): '+detail));
+     }
+    };
+    xhr.onerror=()=>reject(new Error('A transferência foi bloqueada pela rede ou pelo CORS do Firebase Storage.'));
+    xhr.onabort=()=>reject(new Error('A transferência foi cancelada.'));
+    xhr.send(file);
+   });
+   const storage=firebase.app().storage('gs://'+bucket);
+   const downloadUrl=await storage.ref().child(storagePath).getDownloadURL();
+   return {url:downloadUrl,bucket};
+  }catch(error){
+   lastError=error;
+   console.error('Falha na transferência resumível para '+bucket+':',error);
+   if(bucket===buckets[0])status.textContent='A verificar o endereço alternativo do armazenamento…';
+  }
+ }
+ throw lastError||new Error('Não foi possível iniciar a transferência para nenhum bucket Firebase.');
+}
 async function submitPublication(){
  const btn=document.getElementById('publicationSubmit'),status=document.getElementById('publicationProgress'),caption=document.getElementById('publicationCaption').value.trim(),file=document.getElementById('publicationMedia').files[0],type=document.getElementById('publicationType').value;
  if(caption.length>5000){status.textContent='A legenda não pode ultrapassar 5 000 caracteres.';return}
@@ -419,53 +486,9 @@ async function submitPublication(){
    status.textContent='A enviar ficheiro...';
    const ext=(file.name.split('.').pop()||'bin').replace(/[^a-z0-9]/gi,'').toLowerCase();
    storagePath='publications/'+id+'/'+Date.now()+'.'+ext;
-   // Renova a autenticação e tenta o bucket configurado. Se ele não iniciar o envio,
-   // tenta também o nome legado usado por projetos Firebase mais antigos.
-   await user.getIdToken(true);
-   const buckets=['gs://quadro-azny.firebasestorage.app','gs://quadro-azny.appspot.com'];
-   let uploadError=null,uploadBucket='quadro-azny.firebasestorage.app';
-   for(let bucketIndex=0;bucketIndex<buckets.length;bucketIndex++){
-    const bucketUrl=buckets[bucketIndex];
-    status.textContent='A ligar ao armazenamento seguro…';
-    try{
-     const storage=firebase.app().storage(bucketUrl);
-     const ref=storage.ref().child(storagePath);
-     const task=ref.put(file,{contentType:file.type,cacheControl:'public,max-age=3600'});
-     await new Promise((resolve,reject)=>{
-      let done=false,lastBytes=0,lastProgressAt=Date.now();
-      const finish=(fn,value)=>{if(done)return;done=true;clearInterval(watchdog);fn(value)};
-      const watchdog=setInterval(()=>{
-       if(done)return;
-       if(Date.now()-lastProgressAt>15000&&(task.snapshot&&task.snapshot.bytesTransferred||0)===0){
-        try{task.cancel()}catch(_){}
-        const error=new Error('O bucket '+bucketUrl+' não iniciou a transferência.');
-        error.code='storage/zero-progress';
-        finish(reject,error);
-       }else if(Date.now()-lastProgressAt>20000){
-        status.textContent='A ligação está lenta. A manter o envio…';
-       }
-      },2000);
-      task.on(firebase.storage.TaskEvent.STATE_CHANGED,snapshot=>{
-       if(done)return;
-       const total=snapshot.totalBytes||file.size||0;
-       const sent=snapshot.bytesTransferred||0;
-       if(sent>lastBytes){lastBytes=sent;lastProgressAt=Date.now()}
-       const percent=total?Math.min(100,Math.round(sent/total*100)):0;
-       status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… '+percent+'% ('+(sent/1024/1024).toFixed(1)+' / '+(total/1024/1024).toFixed(1)+' MB)';
-      },err=>finish(reject,err),async()=>{
-       try{url=await task.snapshot.ref.getDownloadURL();finish(resolve)}catch(e){finish(reject,e)}
-      });
-     });
-     uploadError=null;uploadBucket=bucketUrl.replace(/^gs:\/\//,'');
-     break;
-    }catch(error){
-     uploadError=error;
-     console.error('Falha no bucket '+bucketUrl+':',error);
-     if(error.code!=='storage/zero-progress'||bucketIndex===buckets.length-1)throw error;
-     status.textContent='A tentar o endereço alternativo do armazenamento…';
-    }
-   }
-   if(uploadError)throw uploadError;
+   const uploaded=await uploadPublicationWithProgress(file,storagePath,user,status,type);
+   url=uploaded.url;
+   uploadBucket=uploaded.bucket;
   }
   status.textContent='A guardar a publicação…';
   const data={id,type,caption,url,storagePath,storageBucket:uploadBucket,fileName:file?file.name:(old&&old.fileName||''),mimeType:file?file.type:(old&&old.mimeType||''),createdAt:old?old.createdAt:Date.now(),updatedAt:Date.now(),publishedBy:ADMIN_EMAIL};
