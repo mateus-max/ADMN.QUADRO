@@ -400,71 +400,40 @@ async function publicationImageDataUrl(file){
  });
 }
 async function uploadPublicationWithProgress(file,storagePath,user,status,type){
- const token=await user.getIdToken(true);
+ if(!user||firebase.auth().currentUser?.uid!==user.uid)throw new Error('A sessão administrativa do Firebase expirou. Termine a sessão e entre novamente.');
+ await user.getIdToken(true);
  const buckets=['quadro-azny.firebasestorage.app','quadro-azny.appspot.com'];
  let lastError=null;
  for(const bucket of buckets){
+  let task=null;
   try{
-   status.textContent='A iniciar a ligação segura ao armazenamento…';
-   const startUrl='https://firebasestorage.googleapis.com/v0/b/'+encodeURIComponent(bucket)+'/o?uploadType=resumable&name='+encodeURIComponent(storagePath);
-   const sessionUrl=await new Promise((resolve,reject)=>{
-    const xhr=new XMLHttpRequest();
-    xhr.open('POST',startUrl,true);
-    xhr.setRequestHeader('Authorization','Bearer '+token);
-    xhr.setRequestHeader('Content-Type','application/json; charset=UTF-8');
-    xhr.setRequestHeader('X-Goog-Upload-Protocol','resumable');
-    xhr.setRequestHeader('X-Goog-Upload-Command','start');
-    xhr.setRequestHeader('X-Goog-Upload-Header-Content-Length',String(file.size));
-    xhr.setRequestHeader('X-Goog-Upload-Header-Content-Type',file.type||'application/octet-stream');
-    xhr.onload=()=>{
-     if(xhr.status>=200&&xhr.status<300){
-      const location=xhr.getResponseHeader('X-Goog-Upload-URL')||xhr.getResponseHeader('x-goog-upload-url')||xhr.getResponseHeader('Location');
-      if(location)resolve(location);
-      else reject(new Error('O Firebase aceitou a ligação, mas não devolveu o endereço da transferência.'));
-     }else{
-      let detail=xhr.responseText||('HTTP '+xhr.status);
-      try{const j=JSON.parse(detail);detail=j.error&&j.error.message||detail}catch(_){}
-      reject(new Error('Firebase Storage ('+xhr.status+'): '+detail));
-     }
-    };
-    xhr.onerror=()=>reject(new Error('Falha de rede ao iniciar a transferência para o Firebase Storage.'));
-    xhr.onabort=()=>reject(new Error('A ligação para iniciar a transferência foi interrompida.'));
-    xhr.send('{}');
-   });
-   status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… 0% (0.0 / '+(file.size/1024/1024).toFixed(1)+' MB)';
-   await new Promise((resolve,reject)=>{
-    const xhr=new XMLHttpRequest();
-    xhr.open('PUT',sessionUrl,true);
-    xhr.setRequestHeader('Authorization','Bearer '+token);
-    xhr.setRequestHeader('X-Goog-Upload-Command','upload, finalize');
-    xhr.setRequestHeader('X-Goog-Upload-Offset','0');
-    xhr.upload.onprogress=event=>{
-     const sent=event.loaded||0,total=event.lengthComputable?event.total:file.size;
-     const percent=total?Math.min(100,Math.round(sent/total*100)):0;
-     status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… '+percent+'% ('+(sent/1024/1024).toFixed(1)+' / '+(file.size/1024/1024).toFixed(1)+' MB)';
-    };
-    xhr.onload=()=>{
-     if(xhr.status>=200&&xhr.status<300)resolve();
-     else{
-      let detail=xhr.responseText||('HTTP '+xhr.status);
-      try{const j=JSON.parse(detail);detail=j.error&&j.error.message||detail}catch(_){}
-      reject(new Error('Falha ao guardar o ficheiro no Firebase Storage ('+xhr.status+'): '+detail));
-     }
-    };
-    xhr.onerror=()=>reject(new Error('A transferência foi bloqueada pela rede ou pelo CORS do Firebase Storage.'));
-    xhr.onabort=()=>reject(new Error('A transferência foi cancelada.'));
-    xhr.send(file);
-   });
    const storage=firebase.app().storage('gs://'+bucket);
-   const downloadUrl=await storage.ref().child(storagePath).getDownloadURL();
+   try{storage.setMaxUploadRetryTime(10*60*1000)}catch(_){}
+   const ref=storage.ref().child(storagePath);
+   status.textContent='A ligar ao Firebase Storage…';
+   const metadata={contentType:file.type||'application/octet-stream',cacheControl:'public,max-age=3600',customMetadata:{originalFileName:file.name||'',uploadedBy:ADMIN_EMAIL}};
+   task=ref.put(file,metadata);
+   await new Promise((resolve,reject)=>{
+    let lastProgress=0;
+    task.on(firebase.storage.TaskEvent.STATE_CHANGED,snapshot=>{
+     const sent=snapshot.bytesTransferred||0,total=snapshot.totalBytes||file.size;
+     const percent=total?Math.min(100,Math.round(sent/total*100)):0;
+     if(sent>lastProgress)lastProgress=sent;
+     status.textContent='A enviar '+(type==='video'?'vídeo':'ficheiro')+'… '+percent+'% ('+(sent/1024/1024).toFixed(1)+' / '+(file.size/1024/1024).toFixed(1)+' MB)';
+    },error=>reject(error),()=>resolve());
+   });
+   const downloadUrl=await task.snapshot.ref.getDownloadURL();
    return {url:downloadUrl,bucket};
   }catch(error){
    lastError=error;
-   console.error('Falha na transferência resumível para '+bucket+':',error);
-   if(bucket===buckets[0])status.textContent='A verificar o endereço alternativo do armazenamento…';
+   if(task&&task.snapshot&&task.snapshot.state==='running')try{await task.cancel()}catch(_){}
+   console.error('Firebase Storage SDK falhou no bucket '+bucket+':',error);
+   if(bucket===buckets[0])status.textContent='A validar o armazenamento alternativo…';
   }
  }
- throw lastError||new Error('Não foi possível iniciar a transferência para nenhum bucket Firebase.');
+ const code=lastError&&lastError.code?' ['+lastError.code+']':'';
+ const detail=lastError&&lastError.message?lastError.message:'erro desconhecido';
+ throw new Error('Não foi possível enviar o ficheiro para o Firebase Storage'+code+': '+detail);
 }
 async function submitPublication(){
  const btn=document.getElementById('publicationSubmit'),status=document.getElementById('publicationProgress'),caption=document.getElementById('publicationCaption').value.trim(),file=document.getElementById('publicationMedia').files[0],type=document.getElementById('publicationType').value;
