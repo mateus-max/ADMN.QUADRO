@@ -371,7 +371,7 @@ function renderPublicationFeedback(postId){
 document.addEventListener('click',async event=>{const b=event.target.closest('[data-comment-delete]');if(!b)return;const post=b.dataset.commentDelete,id=b.dataset.commentId;if(!confirm('Eliminar este comentário?'))return;try{await AZNY_DB.ref('publicationInteractions/'+post+'/comments/'+id).remove();toast('Comentário eliminado.')}catch(e){toast('Não foi possível eliminar o comentário: '+(e.message||''))}});
 document.addEventListener('submit',async event=>{const form=event.target.closest('[data-admin-reply]');if(!form)return;event.preventDefault();const input=form.querySelector('[name="reply"]'),button=form.querySelector('button'),text=input.value.trim();if(!text)return;button.disabled=true;try{await AZNY_DB.ref('publicationInteractions/'+form.dataset.adminReply+'/comments').push({author:'Direção',text,parentId:null,visitorId:'admin',createdAt:firebase.database.ServerValue.TIMESTAMP});input.value='';toast('Resposta publicada.')}catch(e){toast('Não foi possível responder: '+(e.message||''))}finally{button.disabled=false}});
 async function editPublication(id){const p=adminPublications.find(x=>x.id===id);if(!p)return;editingPublicationId=id;document.getElementById('publicationFormTitle').textContent='Editar publicação';document.getElementById('publicationSubmit').textContent='Guardar alterações';document.getElementById('publicationCancelEdit').style.display='inline-flex';document.getElementById('publicationType').value=p.type;document.getElementById('publicationType').disabled=true;document.getElementById('publicationCaption').value=p.caption||'';document.getElementById('publicationMedia').value='';const box=document.getElementById('publicationPreview');box.innerHTML=p.type==='image'?'<img src="'+publicationEscape(p.url)+'" alt="Publicação atual">':p.type==='video'?'<video controls playsinline src="'+publicationEscape(p.url)+'"></video>':'<audio controls src="'+publicationEscape(p.url)+'"></audio>';document.getElementById('publicationProgress').textContent='Pode alterar a legenda ou selecionar um novo ficheiro do mesmo tipo.';document.getElementById('publicationMedia').accept=p.type==='image'?'image/*':p.type==='video'?'video/*':'audio/*';document.querySelector('.admin-content').scrollTo({top:0,behavior:'smooth'})}
-async function deletePublication(id){const p=adminPublications.find(x=>x.id===id);if(!p||!confirm('Eliminar definitivamente esta publicação?'))return;try{await AZNY_DB.ref('publications/'+p._key).remove();if(p.storagePath)await AZNY_STORAGE.ref(p.storagePath).delete().catch(e=>console.warn('Ficheiro antigo não eliminado:',e));toast('Publicação eliminada.')}catch(e){console.error(e);toast('Não foi possível eliminar: '+(e.message||'erro Firebase'))}}
+async function deletePublication(id){const p=adminPublications.find(x=>x.id===id);if(!p||!confirm('Eliminar definitivamente esta publicação?'))return;try{await AZNY_DB.ref('publications/'+p._key).remove();if(p.storagePath)await firebase.app().storage('gs://'+(p.storageBucket||'quadro-azny.firebasestorage.app')).ref(p.storagePath).delete().catch(e=>console.warn('Ficheiro antigo não eliminado:',e));toast('Publicação eliminada.')}catch(e){console.error(e);toast('Não foi possível eliminar: '+(e.message||'erro Firebase'))}}
 async function publicationImageDataUrl(file){
  return new Promise((resolve,reject)=>{
   const reader=new FileReader();
@@ -423,7 +423,7 @@ async function submitPublication(){
    // tenta também o nome legado usado por projetos Firebase mais antigos.
    await user.getIdToken(true);
    const buckets=['gs://quadro-azny.firebasestorage.app','gs://quadro-azny.appspot.com'];
-   let uploadError=null;
+   let uploadError=null,uploadBucket='quadro-azny.firebasestorage.app';
    for(let bucketIndex=0;bucketIndex<buckets.length;bucketIndex++){
     const bucketUrl=buckets[bucketIndex];
     status.textContent='A ligar ao armazenamento seguro…';
@@ -456,7 +456,7 @@ async function submitPublication(){
        try{url=await task.snapshot.ref.getDownloadURL();finish(resolve)}catch(e){finish(reject,e)}
       });
      });
-     uploadError=null;
+     uploadError=null;uploadBucket=bucketUrl.replace(/^gs:\/\//,'');
      break;
     }catch(error){
      uploadError=error;
@@ -468,13 +468,13 @@ async function submitPublication(){
    if(uploadError)throw uploadError;
   }
   status.textContent='A guardar a publicação…';
-  const data={id,type,caption,url,storagePath,fileName:file?file.name:(old&&old.fileName||''),mimeType:file?file.type:(old&&old.mimeType||''),createdAt:old?old.createdAt:Date.now(),updatedAt:Date.now(),publishedBy:ADMIN_EMAIL};
+  const data={id,type,caption,url,storagePath,storageBucket:uploadBucket,fileName:file?file.name:(old&&old.fileName||''),mimeType:file?file.type:(old&&old.mimeType||''),createdAt:old?old.createdAt:Date.now(),updatedAt:Date.now(),publishedBy:ADMIN_EMAIL};
   const key=old?old._key:id;
   await AZNY_DB.ref('publications/'+key).set(data);
   const saved={...data,_key:key},idx=adminPublications.findIndex(x=>x._key===key);
   if(idx>=0)adminPublications[idx]=saved;else adminPublications.unshift(saved);
   renderAdminPublications();
-  if(old&&old.storagePath&&old.storagePath!==storagePath)await AZNY_STORAGE.ref(old.storagePath).delete().catch(e=>console.warn('Ficheiro anterior não eliminado:',e));
+  if(old&&old.storagePath&&old.storagePath!==storagePath)await firebase.app().storage('gs://'+(old.storageBucket||'quadro-azny.firebasestorage.app')).ref(old.storagePath).delete().catch(e=>console.warn('Ficheiro anterior não eliminado:',e));
   toast(old?'Publicação atualizada.':'Publicação publicada.');
   status.textContent='Publicado com sucesso. Já está disponível na página de publicações.';
   resetPublicationForm();
