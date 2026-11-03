@@ -477,7 +477,7 @@ async function submitPublication(){
  const old=editingPublicationId?adminPublications.find(x=>x.id===editingPublicationId):null;
  try{
   const id=editingPublicationId||('PUB-'+Date.now()+'-'+Math.random().toString(36).slice(2,8));
-  let url=old&&old.url||'',storagePath=old&&old.storagePath||'';
+  let url=old&&old.url||'',storagePath=old&&old.storagePath||'',uploadBucket=old&&old.storageBucket||'quadro-azny.firebasestorage.app';
   if(file&&type==='image'){
    status.textContent='A preparar a imagem...';
    url=await publicationImageDataUrl(file);
