@@ -346,8 +346,7 @@ async function adminPaymentAction(requestId,status,note){
  const current=fresh.val();
  if(!current)throw new Error("O pedido já não existe no Realtime Database.");
  if(current.status!=="pending")throw new Error("Este pedido já foi tratado. Actualize a lista.");
- const now=new Date().toISOString();
- const updates={};
+ const nowDate=new Date(),now=nowDate.toISOString(),updates={};
  if(status==="approved"){
   const plans={
    trial:{name:"Teste experimental — 2 aulas",students:45,dailyClasses:3,simultaneous:1,duration:2,storage:"Temporário",trialSessionsLimit:2},
@@ -361,33 +360,69 @@ async function adminPaymentAction(requestId,status,note){
   const email=String(current.email||"").trim().toLowerCase();
   if(!uid||!email)throw new Error("O pedido não contém UID e e-mail válidos.");
   if(!plan)throw new Error("Plano não reconhecido: "+planKey);
-  const token=String(current.accessToken||current.existingAccessToken||"").trim()||(crypto.randomUUID?crypto.randomUUID():("AZNY-"+Date.now()+"-"+Math.random().toString(36).slice(2)));
+  const renewalToken=String(current.existingAccessToken||"").trim();
+  let existingLicense=null;
+  if(renewalToken){
+   const existingSnap=await AZNY_DB.ref("licenses/"+renewalToken).once("value");
+   existingLicense=existingSnap.val();
+   if(!existingLicense||String(existingLicense.teacherUid||"")!==uid||String(existingLicense.teacherEmail||"").toLowerCase()!==email)throw new Error("A licença actual não corresponde ao professor deste pedido. Nenhuma alteração foi aplicada.");
+  }
+  const token=renewalToken||String(current.accessToken||"").trim()||(crypto.randomUUID?crypto.randomUUID():("AZNY-"+Date.now()+"-"+Math.random().toString(36).slice(2)));
+  let expiresAt=null,months=0;
+  if(planKey!=="trial"){
+   months=Math.max(1,Math.min(12,Number(current.months)||(current.period==="annual"?12:1)));
+   let baseDate=nowDate;
+   if(existingLicense?.expiresAt){
+    const oldExpiry=new Date(existingLicense.expiresAt);
+    if(Number.isFinite(oldExpiry.getTime())&&oldExpiry>nowDate)baseDate=oldExpiry;
+   }
+   const expiry=new Date(baseDate);
+   const originalDay=expiry.getDate();
+   expiry.setDate(1);
+   expiry.setMonth(expiry.getMonth()+months);
+   const lastDay=new Date(expiry.getFullYear(),expiry.getMonth()+1,0).getDate();
+   expiry.setDate(Math.min(originalDay,lastDay));
+   expiresAt=expiry.toISOString();
+  }
+  const planName=String(current.planName||plan.name);
   const license={
+   ...(existingLicense||{}),
    status:"active",trialExhausted:false,boardAccess:true,plan:planKey,
-   planName:String(current.planName||plan.name),...plan,
+   planName,...plan,
    ...(planKey==="trial"?{trialSessionsLimit:2,trialSessionsUsed:0,trialCompletedSessions:{}}:{}),
-   startedAt:now,expiresAt:null,teacherName:String(current.name||email),
-   teacherPhone:String(current.phone||""),requestId:String(current.id||requestId),
+   startedAt:existingLicense?.startedAt||now,
+   expiresAt,
+   period:planKey==="trial"?"experimental":String(current.period||"monthly"),
+   subscriptionMonths:months,
+   renewedAt:renewalToken?now:null,
+   lastPaymentRequestId:String(current.id||requestId),
+   teacherName:String(current.name||email),
+   teacherPhone:String(current.phone||existingLicense?.teacherPhone||""),
+   requestId:String(current.id||requestId),
    accessToken:token,teacherEmail:email,teacherUid:uid
   };
+  const [accountSnap,registrationSnap]=await Promise.all([
+   AZNY_DB.ref("teacherAccounts/"+uid).once("value"),
+   AZNY_DB.ref("teacherRegistrationRequests/"+uid).once("value")
+  ]);
   updates["licenses/"+token]=license;
   updates["teacherAccounts/"+uid]={
-   uid,name:String(current.name||email),email,role:"teacher",
+   ...(accountSnap.val()||{}),uid,name:String(current.name||email),email,role:"teacher",
    status:"approved",accountStatus:"active",plan:planKey,
-   planName:license.planName,accessToken:token,
+   planName,accessToken:token,expiresAt,subscriptionMonths:months,
    approvedBy:firebase.auth().currentUser.uid,approvedAt:now,
    activatedAt:firebase.database.ServerValue.TIMESTAMP,
    updatedAt:firebase.database.ServerValue.TIMESTAMP
   };
   updates["teacherRegistrationRequests/"+uid]={
-   uid,name:String(current.name||email),email,role:"teacher",
+   ...(registrationSnap.val()||{}),uid,name:String(current.name||email),email,role:"teacher",
    status:"approved",accountStatus:"active",
    approvedBy:firebase.auth().currentUser.uid,approvedAt:now,
    updatedAt:firebase.database.ServerValue.TIMESTAMP
   };
   updates["paymentRequests/"+requestKey]={
    ...current,status:"approved",accountStatus:"active",
-   accessGranted:true,accessToken:token,
+   accessGranted:true,accessToken:token,expiresAt,subscriptionMonths:months,
    approvedBy:firebase.auth().currentUser.uid,approvedAt:now,
    activatedAt:firebase.database.ServerValue.TIMESTAMP,
    reviewedAt:firebase.database.ServerValue.TIMESTAMP
@@ -399,7 +434,8 @@ async function adminPaymentAction(requestId,status,note){
    rejectedBy:firebase.auth().currentUser.uid,rejectedAt:now,
    reviewedAt:firebase.database.ServerValue.TIMESTAMP
   };
-  const token=String(current.accessToken||current.existingAccessToken||"").trim();
+  // A rejeição de uma renovação não suspende a licença que o professor já possui.
+  const token=String(current.existingAccessToken?"":(current.accessToken||"")).trim();
   if(token){
    updates["licenses/"+token+"/status"]="suspended";
    updates["licenses/"+token+"/boardAccess"]=false;
