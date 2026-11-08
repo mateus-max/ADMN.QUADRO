@@ -319,25 +319,101 @@ function renderAdminModules(){
 }
 
 function renderAdmin(){renderAdminModules();const req=AZNY_REMOTE_LOADED.payments?aznyList(AZNY_REMOTE.payments):readJson(AZNY_PAYMENTS_KEY,[]),pending=req.filter(x=>x.status==='pending').length,active=req.filter(x=>x.status==='approved').length,feedback=readJson(AZNY_FEEDBACK_KEY,[]),newFeedback=feedback.filter(x=>x.status==='new').length;renderCompanyAccounts();document.getElementById('adminStats').textContent='Resumo da administração';document.getElementById('statPayments').textContent=req.length;document.getElementById('statPending').textContent=pending;document.getElementById('statLicenses').textContent=active;document.getElementById('statFeedback').textContent=newFeedback;const box=document.getElementById('paymentRequests');box.innerHTML='';if(!req.length){box.innerHTML='<div class="azny-note">Nenhum pedido recebido.</div>'}else{const t=document.createElement('table');t.className='admin-table';t.innerHTML='<thead><tr><th>Professor</th><th>Plano</th><th>Valor</th><th>Estado</th><th>Ação</th></tr></thead><tbody></tbody>';const tb=t.querySelector('tbody');req.slice().reverse().forEach(r=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+escapeHtml(r.name)+'<br><small>'+escapeHtml(r.email||'Sem e-mail')+'</small><br><small>'+escapeHtml(r.phone)+'</small></td><td>'+escapeHtml(r.planName||r.plan)+'<br><small>'+(r.requestType==='trial'||r.plan==='trial'?'Até 4 aulas':(r.period==='annual'?'anual':'mensal'))+'</small></td><td>'+(r.requestType==='trial'||r.plan==='trial'?'Gratuito':Number(r.amount||0).toLocaleString('pt-AO')+' Kz')+'</td><td>'+statusLabel(r.status)+'</td><td><div class="admin-actions"><button class="azny-btn primary" data-view="'+r.id+'">Ver comprovativo</button><button class="azny-btn" data-edit="'+r.id+'">Editar</button><button class="azny-btn danger" data-reject="'+r.id+'">Rejeitar conta</button><button class="azny-btn danger" data-delete="'+r.id+'">Eliminar</button></div></td>';tb.appendChild(tr)});box.appendChild(t);box.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>openProof(b.dataset.view));box.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openEdit(b.dataset.edit));box.querySelectorAll('[data-reject]').forEach(b=>b.onclick=()=>rejectPayment(b.dataset.reject));box.querySelectorAll('[data-delete]').forEach(b=>b.onclick=()=>deletePayment(b.dataset.delete))}const lb=document.getElementById('teacherLicenses');lb.innerHTML='';const approved=req.filter(r=>r.status==='approved');if(!approved.length)lb.innerHTML='<div class="azny-note">Ainda não existem licenças aprovadas.</div>';else approved.forEach(r=>{const l=document.createElement('div');l.className='proof-box';l.innerHTML='<b>'+escapeHtml(r.name)+'</b> · '+escapeHtml(r.planName)+' · '+(r.period==='annual'?'anual':'mensal')+'<br><span class="license-badge">Aprovado</span> <button class="azny-btn danger" data-reject-license="'+escapeHtml(r.id)+'">Rejeitar conta</button>';lb.appendChild(l)});lb.querySelectorAll('[data-reject-license]').forEach(b=>b.onclick=()=>rejectPayment(b.dataset.rejectLicense));renderFeedback()}function findTeacherRequest(id){return (AZNY_REMOTE_LOADED.payments?aznyList(AZNY_REMOTE.payments):readJson(AZNY_PAYMENTS_KEY,[])).find(x=>x&&String(x.id)===String(id))}
-async function loadAdminPaymentRequests(){await ensureAdminFirebase();const snap=await AZNY_DB.ref("paymentRequests").once("value");AZNY_REMOTE.payments=aznyList(snap.val());AZNY_REMOTE_LOADED.payments=true;AZNY_REMOTE_KEYS.payments={};AZNY_REMOTE.payments.forEach(x=>{if(x&&x.id)AZNY_REMOTE_KEYS.payments[x.id]=x.id});if(adminUnlocked)renderAdmin();return AZNY_REMOTE.payments}
+async function loadAdminPaymentRequests(){
+ await ensureAdminFirebase();
+ const snap=await AZNY_DB.ref("paymentRequests").once("value");
+ AZNY_REMOTE.payments=[];
+ AZNY_REMOTE_KEYS.payments={};
+ snap.forEach(child=>{
+  const item=child.val();
+  if(!item)return;
+  AZNY_REMOTE.payments.push(item);
+  if(item.id)AZNY_REMOTE_KEYS.payments[String(item.id)]=child.key;
+ });
+ AZNY_REMOTE_LOADED.payments=true;
+ if(adminUnlocked)renderAdmin();
+ return AZNY_REMOTE.payments;
+}
 async function adminPaymentAction(requestId,status,note){
  await ensureAdminFirebase();
  const item=findTeacherRequest(requestId);
- if(!item)throw new Error("O pedido já não existe. Actualize a lista.");
+ if(!item)throw new Error("O pedido já não existe no Realtime Database. Actualize a lista.");
  if(!["approved","rejected"].includes(status))throw new Error("Estado de decisão inválido.");
- const action=status==="approved"?"approve":"reject";
- const callable=firebase.app().functions("us-central1").httpsCallable("reviewTeacherPayment");
- let result;
- try{
-  result=await callable({id:String(item.id||requestId),action,note:String(note||"")});
- }catch(error){
-  const code=error&&error.code?String(error.code):"erro-desconhecido";
-  const message=error&&error.message?String(error.message):"Sem descrição do Firebase.";
-  throw new Error("Firebase ("+code+"): "+message);
+ const requestKey=AZNY_REMOTE_KEYS.payments[String(item.id||requestId)]||String(item.id||requestId).replace(/^PAY-/,"");
+ if(!requestKey)throw new Error("Não foi possível localizar a chave real do pedido no Realtime Database.");
+ const requestRef=AZNY_DB.ref("paymentRequests/"+requestKey);
+ const fresh=await requestRef.once("value");
+ const current=fresh.val();
+ if(!current)throw new Error("O pedido já não existe no Realtime Database.");
+ if(current.status!=="pending")throw new Error("Este pedido já foi tratado. Actualize a lista.");
+ const now=new Date().toISOString();
+ const updates={};
+ if(status==="approved"){
+  const plans={
+   trial:{name:"Teste experimental — 2 aulas",students:45,dailyClasses:3,simultaneous:1,duration:2,storage:"Temporário",trialSessionsLimit:2},
+   basic:{name:"Básico",students:10,dailyClasses:2,simultaneous:1,duration:2,storage:"10 GB temporários"},
+   professional:{name:"Profissional",students:45,dailyClasses:3,simultaneous:2,duration:4,storage:"50 GB temporários"},
+   school:{name:"Escola",students:50,dailyClasses:3,simultaneous:5,duration:6,storage:"100 GB temporários"}
+  };
+  const planKey=String(current.plan||"");
+  const plan=plans[planKey];
+  const uid=String(current.uid||"");
+  const email=String(current.email||"").trim().toLowerCase();
+  if(!uid||!email)throw new Error("O pedido não contém UID e e-mail válidos.");
+  if(!plan)throw new Error("Plano não reconhecido: "+planKey);
+  const token=String(current.accessToken||current.existingAccessToken||"").trim()||(crypto.randomUUID?crypto.randomUUID():("AZNY-"+Date.now()+"-"+Math.random().toString(36).slice(2)));
+  const license={
+   status:"active",trialExhausted:false,boardAccess:true,plan:planKey,
+   planName:String(current.planName||plan.name),...plan,
+   ...(planKey==="trial"?{trialSessionsLimit:2,trialSessionsUsed:0,trialCompletedSessions:{}}:{}),
+   startedAt:now,expiresAt:null,teacherName:String(current.name||email),
+   teacherPhone:String(current.phone||""),requestId:String(current.id||requestId),
+   accessToken:token,teacherEmail:email,teacherUid:uid
+  };
+  updates["licenses/"+token]=license;
+  updates["teacherAccounts/"+uid]={
+   uid,name:String(current.name||email),email,role:"teacher",
+   status:"approved",accountStatus:"active",plan:planKey,
+   planName:license.planName,accessToken:token,
+   approvedBy:firebase.auth().currentUser.uid,approvedAt:now,
+   activatedAt:firebase.database.ServerValue.TIMESTAMP,
+   updatedAt:firebase.database.ServerValue.TIMESTAMP
+  };
+  updates["teacherRegistrationRequests/"+uid]={
+   uid,name:String(current.name||email),email,role:"teacher",
+   status:"approved",accountStatus:"active",
+   approvedBy:firebase.auth().currentUser.uid,approvedAt:now,
+   updatedAt:firebase.database.ServerValue.TIMESTAMP
+  };
+  updates["paymentRequests/"+requestKey]={
+   ...current,status:"approved",accountStatus:"active",
+   accessGranted:true,accessToken:token,
+   approvedBy:firebase.auth().currentUser.uid,approvedAt:now,
+   activatedAt:firebase.database.ServerValue.TIMESTAMP,
+   reviewedAt:firebase.database.ServerValue.TIMESTAMP
+  };
+ }else{
+  updates["paymentRequests/"+requestKey]={
+   ...current,status:"rejected",accountStatus:"rejected",
+   accessGranted:false,adminNote:String(note||"").slice(0,500),
+   rejectedBy:firebase.auth().currentUser.uid,rejectedAt:now,
+   reviewedAt:firebase.database.ServerValue.TIMESTAMP
+  };
+  const token=String(current.accessToken||current.existingAccessToken||"").trim();
+  if(token){
+   updates["licenses/"+token+"/status"]="suspended";
+   updates["licenses/"+token+"/boardAccess"]=false;
+  }
  }
- if(!result||!result.data||result.data.ok!==true)throw new Error("O Firebase não confirmou a decisão. Nenhuma aprovação foi apresentada como concluída.");
+ updates["auditLogs/"+AZNY_DB.ref("auditLogs").push().key]={
+  action:"payment_"+(status==="approved"?"approve":"reject"),
+  requestId:String(current.id||requestId),
+  adminUid:firebase.auth().currentUser.uid,
+  at:firebase.database.ServerValue.TIMESTAMP
+ };
+ await AZNY_DB.ref().update(updates);
  await loadAdminPaymentRequests();
- return result.data;
+ return {ok:true,action:status,id:String(current.id||requestId)};
 }
 
 async function ensureAdminFirebase(){const user=firebase.auth().currentUser;if(!user)throw new Error('Sessão Firebase terminada. Saia e entre novamente na administração.');if(user.isAnonymous||String(user.email||'').trim().toLowerCase()!==ADMIN_EMAIL.toLowerCase())throw new Error('A administração não está autenticada com a conta administrativa do Firebase. Termine a sessão e entre novamente.');try{await AZNY_DB.ref('.info/connected').once('value').then(snap=>{if(snap.val()!==true)throw new Error('Sem ligação ativa ao Firebase Realtime Database.')})}catch(e){throw new Error(e.message||'Não foi possível confirmar a ligação ao Firebase.')} }
