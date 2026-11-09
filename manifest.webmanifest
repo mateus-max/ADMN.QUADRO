@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "Administração — Quadro Virtual AZNY",
-  "short_name": "Admin AZNY",
-  "description": "Área administrativa do Quadro Virtual AZNY",
+  "name": "Administração — Remote Work Board",
+  "short_name": "Admin RWB",
+  "description": "Área administrativa do Remote Work Board",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
