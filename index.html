@@ -544,13 +544,13 @@ document.getElementById('adminLogoutBtn').addEventListener('click',async()=>{
 });
 
 
-let teacherDirectoryBound=false;
+let teacherDirectoryBound=false;let teacherDirectoryFirstSnapshot=true;let teacherDirectorySeenIds=new Set();
 function bindTeacherDirectoryModeration(){
  if(teacherDirectoryBound)return;
  teacherDirectoryBound=true;
  const root=AZNY_DB.ref("teacherCourseSubmissions");
  bindDirectoryWhatsapp();
- root.on("value",snap=>renderTeacherDirectoryQueue(snap),error=>{
+ root.on("value",snap=>{const current=new Set();snap.forEach(userNode=>userNode.forEach(courseNode=>{const c=courseNode.val();if(c&&c.status==="approved"){const key=userNode.key+"/"+courseNode.key;current.add(key);if(!teacherDirectoryFirstSnapshot&&!teacherDirectorySeenIds.has(key))toast("Novo curso publicado: "+(c.title||"Curso novo"));}}));teacherDirectorySeenIds=current;teacherDirectoryFirstSnapshot=false;renderTeacherDirectoryQueue(snap)},error=>{
   console.error("Cursos de formadores:",error);
   const box=document.getElementById("teacherDirectoryQueue");
   if(box)box.innerHTML='<div class="azny-note">Não foi possível carregar os pedidos: '+escapeHtml(error.message||"permissão negada")+'</div>';
