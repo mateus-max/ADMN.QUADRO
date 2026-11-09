@@ -201,6 +201,7 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
  <nav class="admin-nav" aria-label="Menu de administração">
   <button class="admin-nav-item active" data-admin-view="overview"><span>⌂</span>Painel Principal</button>
   <button class="admin-nav-item" data-admin-view="teachers"><span>🎓</span>Contas de Professores</button>
+  <button class="admin-nav-item" data-admin-view="teacherDirectory"><span>📚</span>Cursos e Formadores</button>
   <button class="admin-nav-item" data-admin-view="companies"><span>▦</span>Contas Empresariais</button>
   <button class="admin-nav-item" data-admin-view="plans"><span>▰</span>Licenças e Planos</button>
   <button class="admin-nav-item" data-admin-view="payments"><span>▤</span>Pagamentos</button>
@@ -223,6 +224,7 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
  <main class="admin-content">
   <section class="admin-view active admin-welcome" data-admin-panel="overview"><div class="welcome-center"><div class="welcome-icon">▥⚙</div><h1>Painel de Administração</h1><p>Selecione uma das opções do menu à esquerda<br class="desktop-break"> para aceder às funcionalidades da plataforma.</p><span class="welcome-line"></span></div></section>
   <section class="admin-view" data-admin-panel="teachers"><div class="admin-page-heading"><div><h1>🎓 Contas de Professores</h1><p>Pedidos de adesão, pagamentos e licenças dos professores.</p></div></div><div class="module-stats" id="teacherModuleStats"></div><div class="admin-section"><h3>Pedidos e licenças de professores</h3><div id="teacherModuleContent"></div></div></section>
+  <section class="admin-view" data-admin-panel="teacherDirectory"><div class="admin-page-heading"><div><h1>📚 Professores e Formadores de Angola</h1><p>Analise perfis e cursos enviados pelos professores antes da publicação pública.</p></div><span id="directoryPendingCount" class="license-badge">0 pendentes</span></div><div class="admin-section"><h3>Publicações aguardando aprovação</h3><div id="teacherDirectoryQueue"><div class="azny-note">A carregar publicações...</div></div></div></section>
   <section class="admin-view" data-admin-panel="companies"><div class="admin-page-heading"><div><h1>Contas Empresariais</h1><p>Análise dos registos, comprovativos e aprovação das organizações.</p></div><span id="companyPendingCount" class="license-badge">0 pendentes</span></div><div class="admin-section"><h3>🏢 Contas empresariais — análise e aprovação</h3><p class="admin-description">As contas criadas no portal empresarial aparecem aqui. Abra o comprovativo para analisar o pagamento e só aprove depois da verificação.</p><div id="companyAccountsList"><div class="azny-note">A carregar contas empresariais...</div></div></div></section>
   <section class="admin-view" data-admin-panel="plans"><div class="admin-page-heading"><div><h1>▰ Licenças e Planos</h1><p>Planos disponíveis e licenças emitidas pela administração.</p></div></div><div class="module-stats" id="planModuleStats"></div><div class="admin-section"><h3>Catálogo de planos</h3><div id="planModuleContent"></div></div></section>
   <section class="admin-view" data-admin-panel="payments"><div class="admin-page-heading"><div><h1>Pagamentos</h1><p>Consulte pedidos, comprovativos e estados dos pagamentos.</p></div></div><div class="admin-section"><div id="paymentRequests"></div></div></section>
@@ -489,6 +491,7 @@ async function restoreAdminSession(user,logEvent=false){
   gate.classList.remove('show');
   gate.style.display='none';
   await loadAdminPaymentRequests();
+  bindTeacherDirectoryModeration();
   renderAdmin();
   if(logEvent)adminLog('Sessão administrativa iniciada.');
   return true;
@@ -539,5 +542,60 @@ document.getElementById('adminLogoutBtn').addEventListener('click',async()=>{
  try{await firebase.auth().signOut()}
  catch(error){console.error('Falha ao terminar a sessão:',error);toast('Não foi possível terminar a sessão: '+(error.message||''))}
 });
+
+
+let teacherDirectoryBound=false;
+function bindTeacherDirectoryModeration(){
+ if(teacherDirectoryBound)return;
+ teacherDirectoryBound=true;
+ const root=AZNY_DB.ref("teacherCourseSubmissions");
+ root.on("value",snap=>renderTeacherDirectoryQueue(snap),error=>{
+  console.error("Cursos de formadores:",error);
+  const box=document.getElementById("teacherDirectoryQueue");
+  if(box)box.innerHTML='<div class="azny-note">Não foi possível carregar os pedidos: '+escapeHtml(error.message||"permissão negada")+'</div>';
+ });
+}
+function renderTeacherDirectoryQueue(snap){
+ const box=document.getElementById("teacherDirectoryQueue");
+ if(!box)return;
+ const rows=[];
+ snap.forEach(userNode=>userNode.forEach(courseNode=>{
+  const course=courseNode.val();
+  if(course&&course.status==="pending")rows.push({uid:userNode.key,id:courseNode.key,course});
+ }));
+ rows.sort((a,b)=>Number(a.course.createdAt||0)-Number(b.course.createdAt||0));
+ document.getElementById("directoryPendingCount").textContent=rows.length+" pendentes";
+ if(!rows.length){box.innerHTML='<div class="azny-note">Não existem cursos pendentes de aprovação.</div>';return}
+ box.innerHTML=rows.map(row=>{
+  const c=row.course,p=c.profileSnapshot||{};
+  return '<article class="admin-section" style="margin:12px 0;padding:16px;border:1px solid #dce5ef;border-radius:12px"><div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">'+(c.coverUrl?'<img src="'+escapeHtml(c.coverUrl)+'" alt="" style="width:180px;max-width:100%;height:112px;object-fit:cover;border-radius:9px">':'')+'<div style="flex:1;min-width:220px"><h3 style="margin:0 0 6px">'+escapeHtml(c.title||"Curso sem título")+'</h3><div class="admin-description">'+escapeHtml(c.category||"")+' · '+escapeHtml(c.modality||"")+' · '+escapeHtml(c.province||"")+' / '+escapeHtml(c.municipality||"")+'</div><p>'+escapeHtml(c.description||"")+'</p><b>Formador: '+escapeHtml(p.name||"—")+'</b><div class="admin-description">'+escapeHtml(p.title||"")+' · WhatsApp: '+escapeHtml(p.whatsapp||"")+'</div><div class="admin-description">Experiência: '+escapeHtml(p.experienceYears||0)+' ano(s) · Preço: '+Number(c.price||0).toLocaleString("pt-AO")+' Kz · Certificado: '+escapeHtml(c.certificate||"Não")+'</div><p class="admin-description">'+escapeHtml(p.bio||"")+'</p><div class="azny-row" style="margin-top:12px"><button class="azny-btn primary" type="button" data-directory-approve="'+escapeHtml(row.uid+"|"+row.id)+'">Aprovar e publicar</button><button class="azny-btn danger" type="button" data-directory-reject="'+escapeHtml(row.uid+"|"+row.id)+'">Rejeitar</button></div></div></div></article>';
+ }).join("");
+ box.querySelectorAll("[data-directory-approve]").forEach(button=>button.addEventListener("click",()=>reviewTeacherDirectoryCourse(button.dataset.directoryApprove,"approved")));
+ box.querySelectorAll("[data-directory-reject]").forEach(button=>button.addEventListener("click",()=>reviewTeacherDirectoryCourse(button.dataset.directoryReject,"rejected")));
+}
+async function reviewTeacherDirectoryCourse(key,status){
+ const split=String(key||"").split("|"),uid=split[0],id=split.slice(1).join("|");
+ if(!uid||!id)return;
+ let note="";
+ if(status==="rejected"){note=prompt("Indique o motivo da rejeição (opcional):","")||""}
+ try{
+  const snap=await AZNY_DB.ref("teacherCourseSubmissions/"+uid+"/"+id).once("value");
+  const course=snap.val();
+  if(!course||course.status!=="pending")throw new Error("Esta publicação já foi tratada ou não existe.");
+  const profile=course.profileSnapshot;
+  if(!profile||!profile.name||!profile.whatsapp)throw new Error("O perfil profissional está incompleto. Solicite ao professor que actualize o perfil.");
+  const now=Date.now(),adminUid=firebase.auth().currentUser.uid,updates={};
+  if(status==="approved"){
+   updates["publicTeacherProfiles/"+uid]={...profile,uid,approvedAt:now,updatedAt:now};
+   updates["publicTeacherCourses/"+id]={...course,id,teacherUid:uid,profileSnapshot:profile,status:"approved",approvedAt:now,approvedBy:adminUid};
+  }
+  updates["teacherCourseSubmissions/"+uid+"/"+id+"/status"]=status;
+  updates["teacherCourseSubmissions/"+uid+"/"+id+"/reviewedAt"]=now;
+  updates["teacherCourseSubmissions/"+uid+"/"+id+"/reviewedBy"]=adminUid;
+  updates["teacherCourseSubmissions/"+uid+"/"+id+"/adminNote"]=note.slice(0,500);
+  await AZNY_DB.ref().update(updates);
+  toast(status==="approved"?"Curso aprovado e publicado.":"Publicação rejeitada.");
+ }catch(error){console.error("Moderação de curso:",error);toast("Não foi possível concluir: "+(error.message||"erro Firebase"))}
+}
 
 </script>
