@@ -555,6 +555,7 @@ async function restoreAdminSession(user,logEvent=false){
   initMaintenanceModeControls();
   initAdminMobilePullRefresh();
   initAdminHeaderRefresh();
+  initAngolaClock();
   reportBindRealtime();
   const gate=document.getElementById('adminLoginGate');
   gate.classList.remove('show');
