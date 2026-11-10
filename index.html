@@ -266,6 +266,26 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
 @media(max-width:850px){.report-dashboard{padding:18px!important}.report-head{align-items:flex-start;flex-direction:column}.report-live{white-space:normal}.report-visual-grid,.report-grid{grid-template-columns:minmax(0,1fr)}.report-events{grid-column:auto}.report-chart-area{min-height:220px}}
 @media(max-width:520px){.report-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.report-kpis article{min-height:98px;padding:13px}.report-kpis b{font-size:25px}.report-kpis span{font-size:11px}.report-visual-card,.report-card{padding:15px}.report-donut-wrap{gap:10px}.report-donut{width:150px;height:150px;flex-basis:150px}.report-donut-legend{gap:7px}.report-column-chart{height:215px}}
 .admin-top-refresh{width:38px;height:38px;border:1px solid #ffffff55;border-radius:9px;background:#ffffff12;color:#fff;font-size:25px;line-height:1;cursor:pointer}.admin-top-refresh:hover{background:#ffffff25}.admin-top-refresh.is-refreshing{animation:adminRefreshSpin .8s linear infinite}@keyframes adminRefreshSpin{to{transform:rotate(360deg)}}@media(max-width:1150px){.report-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}@media(max-width:760px){.report-dashboard{padding:15px!important}.report-head{align-items:flex-start;flex-direction:column}.report-head h1{font-size:21px}.report-grid{grid-template-columns:1fr}.report-events{grid-column:auto}.report-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.report-kpis b{font-size:23px}.admin-top-actions{gap:6px}.admin-top-refresh{width:34px;height:34px}.admin-top-link,.admin-top-logout{padding:8px;font-size:10px}}
+
+/* Chat de suporte no padrão WhatsApp: mensagens e compositor sempre acessíveis */
+.support-admin-layout{align-items:stretch;min-height:0}
+.support-admin-thread{height:min(76dvh,760px);min-height:440px;max-height:calc(100dvh - 210px);display:flex;flex-direction:column;overflow:hidden}
+.support-admin-thread-head{flex:0 0 auto;position:relative;z-index:2}
+.support-admin-messages{flex:1 1 auto;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain;padding:16px 12px;scrollbar-width:thin}
+.support-admin-msg{max-width:min(82%,620px);padding:10px 13px;border-radius:14px 14px 14px 4px;font-size:14px}
+.support-admin-msg.mine{border-radius:14px 14px 4px 14px;background:#d9fdd3}
+.support-admin-emojis{flex:0 0 auto;position:relative;z-index:2;align-items:center;flex-wrap:wrap;gap:9px;padding:8px 12px;background:#f8fafc;border-top:1px solid #e2e8f0}
+.support-admin-compose{position:sticky;bottom:0;z-index:3;flex:0 0 auto;align-items:flex-end;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#f8fafc}
+.support-admin-compose textarea{min-height:44px;max-height:120px;resize:none;border-radius:24px;padding:12px 15px;background:#fff;font:15px/1.4 inherit}
+.support-admin-compose button{width:46px;height:46px;flex:0 0 46px}
+@media(max-width:850px){
+ .support-admin-layout{grid-template-columns:1fr;gap:10px}
+ .support-admin-list-items{max-height:155px}
+ .support-admin-thread{height:calc(100dvh - 250px);min-height:380px;max-height:none}
+ .support-admin-messages{min-height:0;max-height:none;padding:12px 10px}
+ .support-admin-msg{max-width:88%}
+ .support-admin-compose{padding-left:9px;padding-right:9px}
+}
 </style><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script><link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#071b33"></head><body><div class="admin-app" id="adminApp">
 <aside class="admin-sidebar" id="adminSidebar">
