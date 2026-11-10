@@ -142,7 +142,7 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
 .admin-nav{padding:13px 9px 10px;display:flex;flex-direction:column;gap:4px;overflow-y:auto;flex:1}
 .admin-nav-item{width:100%;min-height:42px;padding:8px 12px;display:flex;align-items:center;gap:12px;border:1px solid transparent;border-radius:10px;background:transparent;color:#f0f6ff;text-align:left;font-size:13px;font-weight:650;cursor:pointer;white-space:nowrap}
 .admin-nav-item span{width:22px;min-width:22px;text-align:center;font-size:19px;color:#fff}
-.admin-nav-item:hover{background:#ffffff18}.admin-nav-item.active{background:linear-gradient(90deg,#0878ee,#0564d7);border-color:#258bff;box-shadow:0 3px 10px #001a3c55}
+.admin-nav-item.report-nav-item{background:#0b3c70;border-color:#2b8df0;color:#fff;font-weight:800}.admin-nav-item.report-nav-item span{color:#67e8f9}.admin-nav-item.report-nav-item:hover{background:#12569a}.admin-nav-item:hover{background:#ffffff18}.admin-nav-item.active{background:linear-gradient(90deg,#0878ee,#0564d7);border-color:#258bff;box-shadow:0 3px 10px #001a3c55}
 .admin-sidebar-bottom{padding:12px 13px 15px;border-top:1px solid #ffffff2a;background:#061b40}
 .firebase-indicator{border:1px solid #b8d1f2;border-radius:9px;padding:9px 10px;display:flex;align-items:center;gap:10px;font-size:12px;background:#0a2b59}.firebase-indicator i{width:10px;height:10px;border-radius:50%;background:#31d16b;box-shadow:0 0 10px #31d16b}.firebase-indicator b,.firebase-indicator small{display:block}.firebase-indicator small{color:#54e28b;margin-top:3px}.admin-version{text-align:center;color:#d1e0f7;font-size:11px;margin-top:10px}
 .admin-main{min-width:0;flex:1;display:flex;flex-direction:column;background:#edf4ff}
@@ -228,6 +228,7 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
  <div class="admin-brand"><img src="admin-icon.svg" alt="Remote Work Board"><div><span>Remote Work</span><b>Board</b><small>Administração</small></div></div>
  <nav class="admin-nav" aria-label="Menu de administração">
   <button class="admin-nav-item active" data-admin-view="overview"><span>⌂</span>Painel Principal</button>
+  <button class="admin-nav-item report-nav-item" data-admin-view="reports"><span>▥</span>Relatórios em Tempo Real</button>
   <button class="admin-nav-item" data-admin-view="teachers"><span>🎓</span>Contas de Professores</button>
   <button class="admin-nav-item" data-admin-view="teacherDirectory"><span>📚</span>Cursos e Formadores</button>
   <button class="admin-nav-item" data-admin-view="companies"><span>▦</span>Contas Empresariais</button>
@@ -235,7 +236,6 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
   <button class="admin-nav-item" data-admin-view="payments"><span>▤</span>Pagamentos</button>
   <button class="admin-nav-item" data-admin-view="assessments"><span>☑</span>Avaliações e Testes</button>
   <button class="admin-nav-item" data-admin-view="users"><span>♟</span>Utilizadores</button>
-  <button class="admin-nav-item" data-admin-view="reports"><span>▥</span>Relatórios</button>
   <button class="admin-nav-item" data-admin-view="feedback"><span>☏</span>Mensagens e Feedback</button>
   <button class="admin-nav-item" data-admin-view="supportChat"><span>💬</span>Chat de Suporte <span id="adminSupportUnreadTotal" class="support-admin-unread" style="margin-left:auto" hidden>0</span></button>
   <button class="admin-nav-item" data-admin-view="publications"><span>✍</span>Criar publicação</button>
