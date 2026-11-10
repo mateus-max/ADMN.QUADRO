@@ -300,6 +300,79 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
  }
  .support-admin-messages{min-height:0!important;flex:1 1 0!important}
 }
+
+/* Chat administrativo com a mesma composição visual do chat WhatsApp */
+.support-admin-thread{
+ background:#07141b!important;border:0!important;border-radius:0!important;
+ color:#e9edef!important;min-height:0!important;
+}
+.support-admin-thread-head{
+ background:#202c33!important;color:#f1f5f7!important;
+ min-height:78px;padding:14px 18px!important;
+ border-bottom:1px solid #2a3942;
+}
+.support-admin-thread-head small{color:#aebac1!important}
+.support-admin-messages{
+ background-color:#0b141a!important;
+ background-image:radial-gradient(circle,#18252d 1.5px,transparent 1.7px)!important;
+ background-size:28px 28px!important;
+ padding:18px 14px!important;gap:10px!important;
+}
+.support-admin-empty{
+ color:#aebac1!important;background:#202c33!important;
+ border-radius:14px;padding:13px 18px!important;
+}
+.support-admin-msg{
+ background:#202c33!important;color:#e9edef!important;
+ border-radius:12px 12px 12px 3px!important;
+ box-shadow:none!important;font-size:14px!important;
+}
+.support-admin-msg.mine{
+ background:#005c4b!important;color:#e9edef!important;
+ border-radius:12px 12px 3px 12px!important;
+}
+.support-admin-msg-meta{color:#aebac1!important}
+.support-admin-compose{
+ background:#0b141a!important;border:0!important;
+ padding:10px 12px calc(10px + env(safe-area-inset-bottom))!important;
+ align-items:center!important;gap:9px!important;
+}
+.support-admin-compose textarea{
+ background:#202c33!important;color:#e9edef!important;
+ border:0!important;border-radius:28px!important;
+ min-height:48px!important;padding:13px 17px!important;
+ font-size:16px!important;resize:none!important;
+}
+.support-admin-compose textarea::placeholder{color:#8696a0!important}
+.support-admin-compose button{
+ width:50px!important;height:50px!important;flex:0 0 50px!important;
+ background:#00a884!important;color:#062c25!important;
+ font-size:24px!important;
+}
+.support-admin-emojis{
+ background:#0b141a!important;border:0!important;
+ padding:7px 12px!important;gap:7px!important;
+}
+.support-admin-emojis [data-admin-support-emoji]{display:none!important}
+.support-admin-attach{
+ width:50px!important;height:50px!important;flex:0 0 50px!important;
+ border-radius:50%!important;background:#202c33!important;
+ color:#d1d7db!important;font-size:31px!important;
+}
+.support-admin-emojis #adminSupportRecord{
+ width:38px!important;height:38px!important;flex:0 0 38px!important;
+ border-radius:50%!important;background:#202c33!important;
+ color:#d1d7db!important;font-size:18px!important;
+}
+@media(max-width:850px){
+ .support-admin-thread{
+  height:calc(var(--admin-support-vh,100dvh) - 145px)!important;
+  min-height:300px!important;max-height:none!important;
+ }
+ .support-admin-messages{min-height:0!important;flex:1 1 0!important}
+ .support-admin-compose{position:relative!important;flex:0 0 auto!important}
+ .support-admin-emojis{flex:0 0 auto!important;justify-content:flex-start!important}
+}
 </style><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-functions-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script><link rel="manifest" href="./manifest.webmanifest"><meta name="theme-color" content="#071b33"></head><body><div class="admin-app" id="adminApp">
 <aside class="admin-sidebar" id="adminSidebar">
