@@ -234,6 +234,11 @@ html,body{height:100%;overflow:hidden!important;background:#edf4ff!important;col
 .report-kpis article:before{font-family:"Segoe UI Emoji","Apple Color Emoji",sans-serif}
 .report-source{display:flex;justify-content:space-between;gap:10px;padding:8px 0;font-size:12px}
 @media(max-width:520px){.report-bar-row{grid-template-columns:minmax(90px,1fr) minmax(50px,1fr) 24px;gap:7px}.report-event{grid-template-columns:18px minmax(0,1fr)}.report-event time{grid-column:2}}
+/* Valores numéricos dos cartões: sempre visíveis */
+.report-kpis article{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;gap:7px!important;padding:16px 14px 14px 66px!important;position:relative!important}
+.report-kpis article>b{display:block!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:2!important;color:#10213e!important;font-size:clamp(25px,2vw,32px)!important;font-weight:800!important;line-height:1.05!important;min-height:1.05em!important}
+.report-kpis article>span{display:block!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:2!important;color:#52647d!important;font-size:12px!important;line-height:1.35!important}
+@media(max-width:520px){.report-kpis article{padding:13px 10px 12px 56px!important;min-height:98px!important}.report-kpis article>b{font-size:25px!important}.report-kpis article>span{font-size:11px!important}}
 /* Acabamento profissional do relatório */
 .report-kpis article{position:relative;padding:18px 18px 17px 66px;min-height:118px}
 .report-kpis article:before{content:attr(data-icon);position:absolute;left:17px;top:20px;width:36px;height:36px;display:grid;place-items:center;border-radius:11px;background:var(--kpi-tint,#eaf3ff);color:var(--kpi-color,#1684f8);font-size:19px;font-weight:800}
