@@ -795,13 +795,17 @@ async function publishAdminPublication(){const button=document.getElementById("p
  const id=AZNY_DB.ref("publications").push().key;
  const record={type:"text",caption,createdAt:Date.now(),author:"Equipa Remote Work Board",createdBy:user.uid};
  button.disabled=true;
- const writePromise=AZNY_DB.ref("publications/"+id).set(record);
- adminPublicationStatus("Publicação enviada! A actualizar a página pública…");
- document.getElementById("publicationCaption").value="";
- document.getElementById("publicationCaptionCount").textContent="0 / 5 000 caracteres";
- const preview=document.getElementById("publicationPreview");if(preview)preview.textContent="Pré-visualização do ficheiro selecionado";
- setTimeout(()=>{button.disabled=false},350);
- writePromise.then(()=>adminPublicationStatus("Publicado! O texto já está disponível na página de publicações.")).catch(error=>{console.error("Publicação de texto:",error);adminPublicationStatus("A publicação não chegou ao servidor. Verifique a ligação e tente novamente.")});
+ adminPublicationStatus("A publicar…");
+ AZNY_DB.ref("publications/"+id).set(record).then(()=>{
+  document.getElementById("publicationCaption").value="";
+  document.getElementById("publicationCaptionCount").textContent="0 / 5 000 caracteres";
+  const preview=document.getElementById("publicationPreview");if(preview)preview.textContent="Pré-visualização do ficheiro selecionado";
+  adminPublicationStatus("Publicado! O texto já está disponível na página de publicações.");
+ }).catch(error=>{
+  console.error("Publicação de texto:",error);
+  const detail=error?.code==="PERMISSION_DENIED"?"O Firebase recusou a gravação. Publique as regras actualizadas do Realtime Database.":(error?.message||"Verifique a ligação e tente novamente.");
+  adminPublicationStatus("Não foi possível publicar: "+detail);
+ }).finally(()=>{button.disabled=false});
  return;
 }
 button.disabled=true;adminPublicationStatus("A publicar...");let storageRef=null;try{const id=AZNY_DB.ref("publications").push().key,record={type,caption,createdAt:firebase.database.ServerValue.TIMESTAMP,author:"Equipa Remote Work Board",createdBy:user.uid};if(type!=="text"){const ext=(file.name.split(".").pop()||(type==="image"?"jpg":"mp4")).replace(/[^a-z0-9]/gi,"").toLowerCase(),path="adminPublications/"+id+"."+ext;storageRef=firebase.storage().ref(path);await storageRef.put(file,{contentType:file.type,customMetadata:{uploadedBy:user.uid,publicationId:id}});record.url=await storageRef.getDownloadURL();record.storagePath=path}await AZNY_DB.ref("publications/"+id).set(record);adminPublicationStatus("Publicação enviada. Já está disponível na página de publicações.");input.value="";document.getElementById("publicationCaption").value="";document.getElementById("publicationPreview").textContent="Pré-visualização do ficheiro selecionado";document.getElementById("publicationCaptionCount").textContent="0 / 5 000 caracteres";document.getElementById("publicationType").value="image";input.accept="image/*";input.required=true;input.style.display="";document.querySelector('label[for="publicationMedia"]').style.display="";document.getElementById("publicationPreview").style.display=""}catch(error){console.error("Publicar conteúdo da Direcção:",error);if(storageRef){try{await storageRef.delete()}catch(_){}}adminPublicationStatus("Não foi possível publicar: "+(error.message||"erro ao carregar o ficheiro"))}finally{button.disabled=false}}
